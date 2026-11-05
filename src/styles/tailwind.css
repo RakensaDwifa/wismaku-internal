@@ -1,0 +1,82 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-rd: #0f766e;
+  --color-rd-dark: #115e59;
+  --color-rd-light: #14b8a6;
+  --color-rd-text: #1e293b;
+  --color-rd-muted: #64748b;
+  --color-rd-soft: #f8fafc;
+  --color-rd-border: #e2e8f0;
+  --color-rd-teal-bg: #f0fdfa;
+
+  --font-sans: 'Manrope', system-ui, -apple-system, sans-serif;
+  --radius-rd: 10px;
+  --shadow-rd: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-rd-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  button {
+    cursor: pointer;
+  }
+  input,
+  select,
+  textarea {
+    outline: none;
+  }
+}
+
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.15s ease-in-out;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+@utility btn-primary {
+  background-color: var(--color-rd);
+  color: #ffffff;
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-rd-dark);
+  }
+}
+
+@utility btn-outline {
+  border: 1px solid var(--color-rd-border);
+  background-color: #ffffff;
+  color: var(--color-rd-text);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-rd-soft);
+    border-color: #cbd5e1;
+  }
+}
+
+@utility btn-danger {
+  background-color: #ef4444;
+  color: #ffffff;
+
+  &:hover:not(:disabled) {
+    background-color: #dc2626;
+  }
+}
+
+@utility btn-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+}
