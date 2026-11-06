@@ -1,5 +1,9 @@
+import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
+import { supabase } from '../lib/supabase.js'
+import { notify } from '../services/storage.js'
+import { DATA_EVENT } from '../hooks/useData.js'
 import Badge from '../components/Badge.jsx'
 
 const STAFF_NAV = [
@@ -20,6 +24,41 @@ const SUPERADMIN_NAV = [
 export default function InternalLayout() {
   const { user, isSuperAdmin, logout } = useAuth()
   const navigate = useNavigate()
+  const [toast, setToast] = useState(null)
+
+  useEffect(() => {
+    if (!supabase) return
+
+    const channel = supabase
+      .channel('wismaku-internal-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload) => {
+        notify(DATA_EVENT, payload)
+        if (payload.eventType === 'INSERT') {
+          setToast(
+            `Pesanan Baru: ${payload.new?.guest_name || 'Tamu'} (#${String(payload.new?.id).slice(0, 8)})`,
+          )
+        } else if (payload.eventType === 'UPDATE' && payload.new?.status !== payload.old?.status) {
+          setToast(
+            `Status Pesanan Diperbarui: #${String(payload.new?.id).slice(0, 8)} (${payload.new?.status})`,
+          )
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'partners' }, (payload) => {
+        notify(DATA_EVENT, payload)
+        setToast(`Pendaftaran Mitra Baru: ${payload.new?.property_name || 'Mitra'}`)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 4500)
+    return () => clearTimeout(timer)
+  }, [toast])
 
   if (!user) return null
 
@@ -139,6 +178,24 @@ export default function InternalLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Floating Live Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border border-teal-200 bg-white px-4 py-3 shadow-2xl text-xs font-bold text-slate-800">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-400 opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-teal-500" />
+          </span>
+          <span>{toast}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="ml-2 text-slate-400 hover:text-slate-600"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }
