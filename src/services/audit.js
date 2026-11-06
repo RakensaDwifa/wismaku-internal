@@ -50,17 +50,27 @@ export async function logAuditAction({ actorId, actorRole, action, targetTable, 
 }
 
 export async function getAuditLogs({ limit = 100 } = {}) {
-  if (USE_MOCK || !supabase) {
-    const list = readList(AUDIT_LOGS_KEY)
-    return list.slice(0, limit)
+  let remoteList = []
+  if (!USE_MOCK && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (error) throw error
+      remoteList = data ?? []
+    } catch (err) {
+      console.warn('[getAuditLogs] Fallback ke audit logs lokal:', err.message)
+    }
   }
 
-  const { data, error } = await supabase
-    .from('audit_logs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit)
-
-  if (error) throw new Error(error.message)
-  return data ?? []
+  const localList = readList(AUDIT_LOGS_KEY)
+  const combined = [...remoteList]
+  for (const item of localList) {
+    if (!combined.some((c) => c.id === item.id)) {
+      combined.push(item)
+    }
+  }
+  return combined.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, limit)
 }
