@@ -6,6 +6,7 @@ import { getAllBookings } from '../../services/bookingAdmin.js'
 import StatCard from '../../components/StatCard.jsx'
 import Badge from '../../components/Badge.jsx'
 import PageLoader from '../../components/PageLoader.jsx'
+import AnalyticsCharts from '../../components/AnalyticsCharts.jsx'
 
 export default function Dashboard() {
   const { data: metrics } = useData(() => getPlatformMetrics(), [])
@@ -54,6 +55,9 @@ export default function Dashboard() {
           badge={pendingLeads.length > 0 ? 'Perlu Tindakan' : 'Clear'}
         />
       </div>
+
+      {/* Visual Analytics Finansial & Operasional */}
+      <AnalyticsCharts bookings={bookings} metrics={metrics} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Antrean Lead Mitra */}
