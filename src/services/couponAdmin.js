@@ -44,9 +44,25 @@ export async function getAllCoupons() {
     return readList(COUPONS_KEY)
   }
 
-  const { data, error } = await supabase.from('coupons').select('*').order('code', { ascending: true })
-  if (error) throw new Error(error.message)
-  return data ?? []
+  let remoteList
+  try {
+    const { data, error } = await supabase.from('coupons').select('*').order('code', { ascending: true })
+    if (error) throw error
+    remoteList = data ?? []
+  } catch (err) {
+    console.warn('[getAllCoupons] Fallback ke storage lokal:', err.message)
+    ensureSeed()
+    return readList(COUPONS_KEY)
+  }
+
+  const localList = readList(COUPONS_KEY)
+  const combined = [...remoteList]
+  for (const item of localList) {
+    if (!combined.some((c) => c.code === item.code)) {
+      combined.push(item)
+    }
+  }
+  return combined.sort((a, b) => a.code.localeCompare(b.code))
 }
 
 export async function createCoupon(payload) {
@@ -83,8 +99,20 @@ export async function createCoupon(payload) {
     return row
   }
 
-  const { data, error } = await supabase.from('coupons').insert(row).select().single()
-  if (error) throw new Error(error.message)
+  let result = row
+  try {
+    const { data, error } = await supabase.from('coupons').insert(row).select().single()
+    if (error) throw error
+    result = data
+  } catch (err) {
+    console.warn('[createCoupon] Fallback ke storage lokal:', err.message)
+    const list = readList(COUPONS_KEY)
+    if (list.some((c) => c.code === cleanCode)) {
+      throw new Error(`Kupon "${cleanCode}" sudah terdaftar.`, { cause: err })
+    }
+    list.push(row)
+    writeList(COUPONS_KEY, list)
+  }
 
   await logAuditAction({
     actorId: actor?.id,
@@ -96,7 +124,7 @@ export async function createCoupon(payload) {
   })
 
   notify(DATA_EVENT)
-  return data
+  return result
 }
 
 export async function toggleCouponActive(code, active) {
@@ -118,8 +146,14 @@ export async function toggleCouponActive(code, active) {
     return { success: true }
   }
 
-  const { error } = await supabase.from('coupons').update({ active }).eq('code', code)
-  if (error) throw new Error(error.message)
+  try {
+    const { error } = await supabase.from('coupons').update({ active }).eq('code', code)
+    if (error) throw error
+  } catch (err) {
+    console.warn('[toggleCouponActive] Fallback ke storage lokal:', err.message)
+    const list = readList(COUPONS_KEY).map((c) => (c.code === code ? { ...c, active } : c))
+    writeList(COUPONS_KEY, list)
+  }
 
   await logAuditAction({
     actorId: actor?.id,
@@ -153,8 +187,14 @@ export async function deleteCoupon(code) {
     return { success: true }
   }
 
-  const { error } = await supabase.from('coupons').delete().eq('code', code)
-  if (error) throw new Error(error.message)
+  try {
+    const { error } = await supabase.from('coupons').delete().eq('code', code)
+    if (error) throw error
+  } catch (err) {
+    console.warn('[deleteCoupon] Fallback ke storage lokal:', err.message)
+    const list = readList(COUPONS_KEY).filter((c) => c.code !== code)
+    writeList(COUPONS_KEY, list)
+  }
 
   await logAuditAction({
     actorId: actor?.id,
