@@ -35,7 +35,16 @@ export async function getPartnerLeads() {
       writeList(PARTNERS_KEY, seedPartnerLeads)
       list = seedPartnerLeads
     }
-    return list
+    return list.map((l) => ({
+      id: l.id,
+      userId: l.user_id,
+      ownerName: l.owner_name || l.ownerName,
+      propertyName: l.property_name || l.propertyName,
+      city: l.city,
+      email: l.email,
+      submittedAt: l.submitted_at || l.submittedAt,
+      status: l.status || 'pending',
+    }))
   }
 
   const [{ data: leads, error }, { data: hotels }] = await Promise.all([
