@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getAllReviews, deleteReviewByAdmin, REVIEWS_KEY, seedReviews } from './reviewAdmin.js'
+import {
+  getAllReviews,
+  deleteReviewByAdmin,
+  toggleReviewVisibility,
+  REVIEWS_KEY,
+  seedReviews,
+} from './reviewAdmin.js'
 import { writeList } from './storage.js'
 
 beforeEach(() => {
@@ -22,5 +28,20 @@ describe('Review Admin Service', () => {
 
     const updated = await getAllReviews()
     expect(updated.some((r) => r.id === target.id)).toBe(false)
+  })
+
+  it('dapat menangguhkan (soft-hide) dan menampilkan kembali ulasan tamu', async () => {
+    const list = await getAllReviews()
+    const target = list[0]
+
+    await toggleReviewVisibility(target.id, true)
+    let updated = await getAllReviews()
+    let check = updated.find((r) => r.id === target.id)
+    expect(check.hidden).toBe(true)
+
+    await toggleReviewVisibility(target.id, false)
+    updated = await getAllReviews()
+    check = updated.find((r) => r.id === target.id)
+    expect(check.hidden).toBe(false)
   })
 })

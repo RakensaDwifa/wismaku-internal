@@ -6,6 +6,7 @@ import {
   createOnDemandPayout,
   markPayoutAsPaid,
 } from '../../services/payoutAdmin.js'
+import { generatePayoutsCSV, downloadCSV } from '../../services/export.js'
 import Badge from '../../components/Badge.jsx'
 import Modal from '../../components/Modal.jsx'
 import FormField from '../../components/FormField.jsx'
@@ -171,12 +172,33 @@ export default function PayoutsPage() {
 
       {/* Riwayat Tiket Payouts */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4">
-          <h2 className="text-base font-extrabold text-slate-900">Riwayat Pencairan Dana Mitra</h2>
-          <p className="text-xs text-slate-500">
-            Daftar pengiriman bagi hasil ke rekening mitra. Status "Lunas" otomatis terlihat di dashboard
-            mitra extranet.
-          </p>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900">Riwayat Pencairan Dana Mitra</h2>
+            <p className="text-xs text-slate-500">
+              Daftar pengiriman bagi hasil ke rekening mitra. Status "Lunas" otomatis terlihat di dashboard
+              mitra extranet.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const csv = generatePayoutsCSV(payouts)
+              downloadCSV(`wismaku-rekap-payout-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+            }}
+            disabled={payouts.length === 0}
+            className="inline-flex items-center gap-1.5 self-start rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 sm:self-auto"
+          >
+            <svg className="h-3.5 w-3.5 text-teal-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+            Ekspor Rekap (CSV)
+          </button>
         </div>
 
         {payouts.length === 0 ? (

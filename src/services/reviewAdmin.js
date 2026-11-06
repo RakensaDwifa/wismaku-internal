@@ -1,11 +1,12 @@
 import { supabase } from '../lib/supabase.js'
 import { USE_MOCK } from './api.js'
-import { readList, writeList, notify } from './storage.js'
+import { readList, writeList, readObject, writeObject, notify } from './storage.js'
 import { logAuditAction } from './audit.js'
 import { getActiveUser } from './auth.js'
 import { DATA_EVENT } from '../hooks/useData.js'
 
 export const REVIEWS_KEY = 'wismaku_internal_reviews'
+export const HIDDEN_REVIEWS_KEY = 'wismaku_internal_hidden_reviews'
 
 export const seedReviews = [
   {
@@ -29,13 +30,18 @@ export const seedReviews = [
 ]
 
 export async function getAllReviews() {
+  const hiddenMap = readObject(HIDDEN_REVIEWS_KEY) || {}
+
   if (USE_MOCK || !supabase) {
     let list = readList(REVIEWS_KEY)
     if (list.length === 0) {
       writeList(REVIEWS_KEY, seedReviews)
       list = seedReviews
     }
-    return list
+    return list.map((r) => ({
+      ...r,
+      hidden: Boolean(hiddenMap[r.id]),
+    }))
   }
 
   const { data, error } = await supabase
@@ -54,7 +60,39 @@ export async function getAllReviews() {
     rating: r.rating,
     text: r.text,
     created_at: r.created_at,
+    hidden: Boolean(hiddenMap[r.id] || r.is_hidden),
   }))
+}
+
+export async function toggleReviewVisibility(reviewId, hidden = true) {
+  const actor = getActiveUser()
+  const hiddenMap = readObject(HIDDEN_REVIEWS_KEY) || {}
+  if (hidden) {
+    hiddenMap[reviewId] = true
+  } else {
+    delete hiddenMap[reviewId]
+  }
+  writeObject(HIDDEN_REVIEWS_KEY, hiddenMap)
+
+  if (!USE_MOCK && supabase) {
+    try {
+      await supabase.from('reviews').update({ is_hidden: hidden }).eq('id', reviewId)
+    } catch {
+      // Ignored if column is_hidden not yet migrated on live database
+    }
+  }
+
+  await logAuditAction({
+    actorId: actor?.id,
+    actorRole: actor?.role,
+    action: hidden ? 'review_soft_hidden' : 'review_restored',
+    targetTable: 'reviews',
+    targetId: reviewId,
+    details: { hidden },
+  })
+
+  notify(DATA_EVENT)
+  return { success: true }
 }
 
 export async function deleteReviewByAdmin(reviewId, reason = '') {
