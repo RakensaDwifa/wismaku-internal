@@ -7,11 +7,13 @@ import {
   markPayoutAsPaid,
 } from '../../services/payoutAdmin.js'
 import { generatePayoutsCSV, downloadCSV } from '../../services/export.js'
+import { uploadPayoutReceipt } from '../../services/storageUpload.js'
 import Badge from '../../components/Badge.jsx'
 import Modal from '../../components/Modal.jsx'
 import FormField from '../../components/FormField.jsx'
 import EmptyState from '../../components/EmptyState.jsx'
 import PageLoader from '../../components/PageLoader.jsx'
+import PayoutReceiptModal from '../../components/PayoutReceiptModal.jsx'
 
 export default function PayoutsPage() {
   const { data: payouts, refresh: refreshPayouts } = useData(() => getPayoutsList(), [])
@@ -21,9 +23,29 @@ export default function PayoutsPage() {
   const [periodStart, setPeriodStart] = useState('')
   const [periodEnd, setPeriodEnd] = useState('')
   const [payingPayout, setPayingPayout] = useState(null)
+  const [selectedReceipt, setSelectedReceipt] = useState(null)
   const [transferRef, setTransferRef] = useState('')
+  const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  const handleReceiptUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingReceipt(true)
+    setError('')
+    try {
+      const { path } = await uploadPayoutReceipt(file)
+      const cleanRef = `TRF-${path.split('/').pop().slice(0, 18).toUpperCase()}`
+      if (!transferRef) {
+        setTransferRef(cleanRef)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setUploadingReceipt(false)
+    }
+  }
 
   if (!payouts || !unpaidMitra) return <PageLoader />
 
@@ -259,6 +281,28 @@ export default function PayoutsPage() {
                           Tandai Lunas
                         </button>
                       )}
+                      {p.status === 'paid' && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedReceipt(p)}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                        >
+                          <svg
+                            className="size-3.5 text-teal-700"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                            />
+                          </svg>
+                          Kwitansi
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -340,16 +384,43 @@ export default function PayoutsPage() {
 
             <FormField
               label="Nomor Referensi / Bukti Transfer Bank"
-              hint="Masukkan nomor referensi transaksi internet banking atau transfer BCA/Mandiri/BRI."
+              hint="Masukkan nomor referensi transaksi atau unggah berkas slip transfer bank."
             >
-              <input
-                type="text"
-                placeholder="Contoh: TRF-BCA-20261106-98124"
-                className="w-full rounded-lg border border-slate-300 p-2 text-sm focus:border-teal-700"
-                value={transferRef}
-                onChange={(e) => setTransferRef(e.target.value)}
-                required
-              />
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="Contoh: TRF-BCA-20261106-98124"
+                  className="w-full rounded-lg border border-slate-300 p-2 text-sm focus:border-teal-700 font-mono"
+                  value={transferRef}
+                  onChange={(e) => setTransferRef(e.target.value)}
+                  required
+                />
+                <div>
+                  <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100 cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      className="sr-only"
+                      onChange={handleReceiptUpload}
+                      disabled={uploadingReceipt}
+                    />
+                    <svg
+                      className="size-3.5 text-teal-700"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                      />
+                    </svg>
+                    {uploadingReceipt ? 'Mengunggah Berkas...' : 'Unggah Slip Bukti Transfer (JPG/PNG/PDF)'}
+                  </label>
+                </div>
+              </div>
             </FormField>
 
             {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
@@ -374,6 +445,8 @@ export default function PayoutsPage() {
           </form>
         )}
       </Modal>
+
+      <PayoutReceiptModal payout={selectedReceipt} onClose={() => setSelectedReceipt(null)} />
     </div>
   )
 }
