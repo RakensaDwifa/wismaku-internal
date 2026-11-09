@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase.js'
 import { USE_MOCK } from './api.js'
-import { readList, writeList, readObject, writeObject, notify } from './storage.js'
+import { readList, writeList, notify } from './storage.js'
 import { logAuditAction } from './audit.js'
 import { getActiveUser } from './auth.js'
 import { DATA_EVENT } from '../hooks/useData.js'
@@ -39,26 +39,13 @@ export async function getPayoutsList() {
     return readList(PAYOUTS_KEY)
   }
 
-  let remoteList = []
-  try {
-    const { data, error } = await supabase
-      .from('partner_payouts')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) throw error
-    remoteList = data ?? []
-  } catch (err) {
-    console.warn('[getPayoutsList] Fallback ke storage lokal:', err.message)
-  }
+  const { data, error } = await supabase
+    .from('partner_payouts')
+    .select('*')
+    .order('created_at', { ascending: false })
 
-  const localList = readList(PAYOUTS_KEY)
-  const combined = [...remoteList]
-  for (const item of localList) {
-    if (!combined.some((r) => r.id === item.id)) {
-      combined.push(item)
-    }
-  }
-  return combined.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+  if (error) throw new Error(error.message)
+  return data ?? []
 }
 
 export async function getUnpaidCompletedBookings() {
@@ -84,57 +71,32 @@ export async function getUnpaidCompletedBookings() {
   }
 
   // Live Supabase
-  let bookings
-  let hotels
-  try {
-    const [{ data: bData, error: bErr }, { data: hData, error: hErr }] = await Promise.all([
-      supabase
-        .from('bookings')
-        .select('id, hotel_id, status, partner_net, total_price, payout_id, created_at')
-        .order('created_at', { ascending: false }),
-      supabase.from('hotels').select('id, partner_email'),
-    ])
+  const [{ data: bData, error: bErr }, { data: hData, error: hErr }] = await Promise.all([
+    supabase
+      .from('bookings')
+      .select('id, hotel_id, status, partner_net, total_price, payout_id, created_at')
+      .eq('status', 'completed')
+      .is('payout_id', null)
+      .order('created_at', { ascending: false }),
+    supabase.from('hotels').select('id, partner_email, commission_rate'),
+  ])
 
-    if (bErr) throw bErr
-    if (hErr) throw hErr
-    bookings = bData ?? []
-    hotels = hData ?? []
-  } catch (err) {
-    console.warn('[getUnpaidCompletedBookings] Fallback ke storage lokal:', err.message)
-    const allBookings = readList(BOOKINGS_KEY)
-    const unpaid = allBookings.filter((b) => b.status === 'completed' && !b.payout_id)
-    const grouped = new Map()
-    for (const b of unpaid) {
-      const email = 'mitra@wismaku.com'
-      if (!grouped.has(email)) {
-        grouped.set(email, { partnerEmail: email, totalNet: 0, count: 0, bookingIds: [] })
-      }
-      const item = grouped.get(email)
-      item.totalNet += Number(
-        Number(b.partner_net) > 0 ? b.partner_net : Math.round(Number(b.total_price || 0) * 0.85),
-      )
-      item.count += 1
-      item.bookingIds.push(b.id)
-    }
-    return Array.from(grouped.values())
-  }
+  if (bErr) throw new Error(bErr.message)
+  if (hErr) throw new Error(hErr.message)
 
-  const localOverrides = readObject('wismaku_internal_booking_overrides') || {}
-  const ownerByHotel = new Map((hotels ?? []).map((h) => [String(h.id), h.partner_email?.toLowerCase()]))
+  const hotelMap = new Map((hData ?? []).map((h) => [String(h.id), h]))
   const grouped = new Map()
 
-  for (const rawB of bookings) {
-    const override = localOverrides[rawB.id] || {}
-    const b = { ...rawB, ...override }
-    if (b.status !== 'completed' || b.payout_id) continue
-
-    const ownerEmail = ownerByHotel.get(String(b.hotel_id)) || 'mitra@wismaku.com'
+  for (const b of bData ?? []) {
+    const hotel = hotelMap.get(String(b.hotel_id))
+    const ownerEmail = hotel?.partner_email?.toLowerCase() || 'mitra@wismaku.com'
     if (!grouped.has(ownerEmail)) {
       grouped.set(ownerEmail, { partnerEmail: ownerEmail, totalNet: 0, count: 0, bookingIds: [] })
     }
     const item = grouped.get(ownerEmail)
+    const commRate = Number(hotel?.commission_rate ?? 0.15)
     const net = Number(
-      Number(b.partner_net) > 0 ? b.partner_net : Math.round(Number(b.total_price || 0) * 0.85),
+      Number(b.partner_net) > 0 ? b.partner_net : Math.round(Number(b.total_price || 0) * (1 - commRate)),
     )
     item.totalNet += net
     item.count += 1
@@ -196,7 +158,7 @@ export async function createOnDemandPayout({ partnerEmail, periodStart, periodEn
     return payout
   }
 
-  // Live Supabase flow with local resilience
+  // Live Supabase flow (Superadmin only)
   const unpaidGroups = await getUnpaidCompletedBookings()
   const matched = unpaidGroups.find((g) => g.partnerEmail.toLowerCase() === cleanEmail)
   if (!matched || matched.bookingIds.length === 0) {
@@ -205,49 +167,32 @@ export async function createOnDemandPayout({ partnerEmail, periodStart, periodEn
 
   const amount = matched.totalNet
   const bookingIds = matched.bookingIds
-  const payoutId = `PAY-${Date.now().toString(36).toUpperCase()}`
-  let payout = {
-    id: payoutId,
-    partner_email: cleanEmail,
-    amount,
-    period_start: periodStart || new Date(Date.now() - 3600000 * 24 * 30).toISOString().slice(0, 10),
-    period_end: periodEnd || new Date().toISOString().slice(0, 10),
-    status: 'pending',
-    transfer_ref: null,
-    paid_at: null,
-    created_at: new Date().toISOString(),
-  }
 
-  try {
-    const { data: dbPayout, error: pErr } = await supabase
-      .from('partner_payouts')
-      .insert({
-        partner_email: cleanEmail,
-        amount,
-        period_start: payout.period_start,
-        period_end: payout.period_end,
-        status: 'pending',
-      })
-      .select()
-      .single()
+  const pStart = periodStart || new Date(Date.now() - 3600000 * 24 * 30).toISOString().slice(0, 10)
+  const pEnd = periodEnd || new Date().toISOString().slice(0, 10)
 
-    if (!pErr && dbPayout) {
-      payout = dbPayout
-      await supabase.from('bookings').update({ payout_id: payout.id }).in('id', bookingIds)
-    } else {
-      throw pErr
-    }
-  } catch (err) {
-    console.warn('[createOnDemandPayout] Fallback ke storage lokal:', err?.message)
-    const localPayouts = readList(PAYOUTS_KEY)
-    localPayouts.unshift(payout)
-    writeList(PAYOUTS_KEY, localPayouts)
+  const { data: dbPayout, error: pErr } = await supabase
+    .from('partner_payouts')
+    .insert({
+      partner_email: cleanEmail,
+      amount,
+      period_start: pStart,
+      period_end: pEnd,
+      status: 'pending',
+    })
+    .select()
+    .single()
 
-    const overrides = readObject('wismaku_internal_booking_overrides') || {}
-    for (const bId of bookingIds) {
-      overrides[bId] = { ...(overrides[bId] || {}), payout_id: payout.id }
-    }
-    writeObject('wismaku_internal_booking_overrides', overrides)
+  if (pErr) throw new Error(`Gagal membuat payout: ${pErr.message}`)
+
+  // Kunci pesanan terkait dengan ID payout
+  const { error: lockErr } = await supabase
+    .from('bookings')
+    .update({ payout_id: dbPayout.id })
+    .in('id', bookingIds)
+
+  if (lockErr) {
+    console.warn('[createOnDemandPayout] Warning saat mengunci booking:', lockErr.message)
   }
 
   await logAuditAction({
@@ -255,7 +200,7 @@ export async function createOnDemandPayout({ partnerEmail, periodStart, periodEn
     actorRole: actor?.role,
     action: 'payout_created',
     targetTable: 'partner_payouts',
-    targetId: payout.id,
+    targetId: dbPayout.id,
     details: {
       partnerEmail: cleanEmail,
       amount,
@@ -265,7 +210,7 @@ export async function createOnDemandPayout({ partnerEmail, periodStart, periodEn
   })
 
   notify(DATA_EVENT)
-  return payout
+  return dbPayout
 }
 
 export async function markPayoutAsPaid(payoutId, { transferRef }) {
@@ -300,31 +245,16 @@ export async function markPayoutAsPaid(payoutId, { transferRef }) {
     return { success: true }
   }
 
-  try {
-    const { error } = await supabase
-      .from('partner_payouts')
-      .update({
-        status: 'paid',
-        transfer_ref: cleanRef,
-        paid_at: new Date().toISOString(),
-      })
-      .eq('id', payoutId)
+  const { error } = await supabase
+    .from('partner_payouts')
+    .update({
+      status: 'paid',
+      transfer_ref: cleanRef,
+      paid_at: new Date().toISOString(),
+    })
+    .eq('id', payoutId)
 
-    if (error) throw error
-  } catch (err) {
-    console.warn('[markPayoutAsPaid] Fallback ke storage lokal:', err.message)
-    const list = readList(PAYOUTS_KEY).map((p) =>
-      p.id === payoutId
-        ? {
-            ...p,
-            status: 'paid',
-            transfer_ref: cleanRef,
-            paid_at: new Date().toISOString(),
-          }
-        : p,
-    )
-    writeList(PAYOUTS_KEY, list)
-  }
+  if (error) throw new Error(error.message)
 
   await logAuditAction({
     actorId: actor?.id,

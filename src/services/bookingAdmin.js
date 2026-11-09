@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase.js'
 import { USE_MOCK } from './api.js'
-import { readList, writeList, readObject, writeObject, notify } from './storage.js'
+import { readList, writeList, notify } from './storage.js'
 import { logAuditAction } from './audit.js'
 import { getActiveUser } from './auth.js'
 import { DATA_EVENT } from '../hooks/useData.js'
@@ -57,40 +57,34 @@ export async function getAllBookings({ status, search } = {}) {
       list = seedBookings
     }
   } else {
-    try {
-      let query = supabase.from('bookings').select('*').order('created_at', { ascending: false })
-      if (status && status !== 'all') {
-        query = query.eq('status', status)
-      }
-      const { data, error } = await query
-      if (error) throw error
-
-      const localOverrides = readObject('wismaku_internal_booking_overrides') || {}
-      list = (data ?? []).map((b) => {
-        const override = localOverrides[b.id] || {}
-        const merged = { ...b, ...override }
-        const totalPrice = Number(merged.total_price || 0)
-        const platformFee = Number(
-          Number(merged.platform_fee) > 0 ? merged.platform_fee : Math.round(totalPrice * 0.15),
-        )
-        const partnerNet = Number(
-          Number(merged.partner_net) > 0 ? merged.partner_net : Math.max(0, totalPrice - platformFee),
-        )
-        return {
-          ...merged,
-          total_price: totalPrice,
-          platform_fee: platformFee,
-          partner_net: partnerNet,
-        }
-      })
-    } catch (err) {
-      console.warn('[getAllBookings] Fallback ke storage lokal:', err.message)
-      list = readList(BOOKINGS_KEY)
-      if (list.length === 0) {
-        writeList(BOOKINGS_KEY, seedBookings)
-        list = seedBookings
-      }
+    let query = supabase
+      .from('bookings')
+      .select('*, hotels(name, commission_rate)')
+      .order('created_at', { ascending: false })
+    if (status && status !== 'all') {
+      query = query.eq('status', status)
     }
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+
+    list = (data ?? []).map((b) => {
+      const totalPrice = Number(b.total_price || 0)
+      const commRate = Number(b.hotels?.commission_rate ?? 0.15)
+      const platformFee = Number(
+        Number(b.platform_fee) > 0 ? b.platform_fee : Math.round(totalPrice * commRate),
+      )
+      const partnerNet = Number(
+        Number(b.partner_net) > 0 ? b.partner_net : Math.max(0, totalPrice - platformFee),
+      )
+      return {
+        ...b,
+        hotel_name: b.hotels?.name || b.hotel_name || `Hotel #${b.hotel_id}`,
+        total_price: totalPrice,
+        platform_fee: platformFee,
+        partner_net: partnerNet,
+        commission_rate: commRate,
+      }
+    })
   }
 
   if (status && status !== 'all') {
@@ -115,15 +109,8 @@ export async function cancelBookingByAdmin(id, reason = '') {
     const list = readList(BOOKINGS_KEY).map((b) => (b.id === id ? { ...b, status: 'cancelled' } : b))
     writeList(BOOKINGS_KEY, list)
   } else {
-    try {
-      const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', String(id))
-      if (error) throw error
-    } catch (err) {
-      console.warn('[cancelBookingByAdmin] Fallback ke storage lokal:', err.message)
-      const overrides = readObject('wismaku_internal_booking_overrides') || {}
-      overrides[id] = { ...(overrides[id] || {}), status: 'cancelled' }
-      writeObject('wismaku_internal_booking_overrides', overrides)
-    }
+    const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', String(id))
+    if (error) throw new Error(error.message)
   }
 
   await logAuditAction({
@@ -146,15 +133,8 @@ export async function completeBookingByAdmin(id) {
     const list = readList(BOOKINGS_KEY).map((b) => (b.id === id ? { ...b, status: 'completed' } : b))
     writeList(BOOKINGS_KEY, list)
   } else {
-    try {
-      const { error } = await supabase.from('bookings').update({ status: 'completed' }).eq('id', String(id))
-      if (error) throw error
-    } catch (err) {
-      console.warn('[completeBookingByAdmin] Fallback status override:', err.message)
-      const overrides = readObject('wismaku_internal_booking_overrides') || {}
-      overrides[id] = { ...(overrides[id] || {}), status: 'completed' }
-      writeObject('wismaku_internal_booking_overrides', overrides)
-    }
+    const { error } = await supabase.from('bookings').update({ status: 'completed' }).eq('id', String(id))
+    if (error) throw new Error(error.message)
   }
 
   await logAuditAction({
