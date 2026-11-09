@@ -1,12 +1,11 @@
 import { supabase } from '../lib/supabase.js'
 import { USE_MOCK } from './api.js'
-import { readList, writeList, readObject, writeObject, notify } from './storage.js'
+import { readList, writeList, notify } from './storage.js'
 import { logAuditAction } from './audit.js'
 import { getActiveUser } from './auth.js'
 import { DATA_EVENT } from '../hooks/useData.js'
 
 export const REVIEWS_KEY = 'wismaku_internal_reviews'
-export const HIDDEN_REVIEWS_KEY = 'wismaku_internal_hidden_reviews'
 
 export const seedReviews = [
   {
@@ -16,6 +15,7 @@ export const seedReviews = [
     name: 'Budi Santoso',
     rating: 5,
     text: 'Lokasi strategis, kamar bersih dan staf sangat ramah!',
+    is_hidden: false,
     created_at: new Date(Date.now() - 3600000 * 20).toISOString(),
   },
   {
@@ -25,13 +25,12 @@ export const seedReviews = [
     name: 'Rina Kusuma',
     rating: 1,
     text: 'SPAM TEST: Promo obat pelangsing hubungi nomor 081234567890 murah meriah!',
+    is_hidden: false,
     created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
   },
 ]
 
 export async function getAllReviews() {
-  const hiddenMap = readObject(HIDDEN_REVIEWS_KEY) || {}
-
   if (USE_MOCK || !supabase) {
     let list = readList(REVIEWS_KEY)
     if (list.length === 0) {
@@ -40,7 +39,7 @@ export async function getAllReviews() {
     }
     return list.map((r) => ({
       ...r,
-      hidden: Boolean(hiddenMap[r.id]),
+      hidden: Boolean(r.is_hidden),
     }))
   }
 
@@ -60,26 +59,22 @@ export async function getAllReviews() {
     rating: r.rating,
     text: r.text,
     created_at: r.created_at,
-    hidden: Boolean(hiddenMap[r.id] || r.is_hidden),
+    hidden: Boolean(r.is_hidden),
+    replyText: r.reply_text,
+    repliedAt: r.replied_at,
+    repliedBy: r.replied_by,
   }))
 }
 
 export async function toggleReviewVisibility(reviewId, hidden = true) {
   const actor = getActiveUser()
-  const hiddenMap = readObject(HIDDEN_REVIEWS_KEY) || {}
-  if (hidden) {
-    hiddenMap[reviewId] = true
-  } else {
-    delete hiddenMap[reviewId]
-  }
-  writeObject(HIDDEN_REVIEWS_KEY, hiddenMap)
 
-  if (!USE_MOCK && supabase) {
-    try {
-      await supabase.from('reviews').update({ is_hidden: hidden }).eq('id', reviewId)
-    } catch {
-      // Ignored if column is_hidden not yet migrated on live database
-    }
+  if (USE_MOCK || !supabase) {
+    const list = readList(REVIEWS_KEY).map((r) => (r.id === reviewId ? { ...r, is_hidden: hidden } : r))
+    writeList(REVIEWS_KEY, list)
+  } else {
+    const { error } = await supabase.from('reviews').update({ is_hidden: hidden }).eq('id', reviewId)
+    if (error) throw new Error(error.message)
   }
 
   await logAuditAction({
@@ -101,20 +96,10 @@ export async function deleteReviewByAdmin(reviewId, reason = '') {
   if (USE_MOCK || !supabase) {
     const list = readList(REVIEWS_KEY).filter((r) => r.id !== reviewId)
     writeList(REVIEWS_KEY, list)
-    await logAuditAction({
-      actorId: actor?.id,
-      actorRole: actor?.role,
-      action: 'review_deleted_by_admin',
-      targetTable: 'reviews',
-      targetId: reviewId,
-      details: { reason },
-    })
-    notify(DATA_EVENT)
-    return { success: true }
+  } else {
+    const { error } = await supabase.from('reviews').delete().eq('id', reviewId)
+    if (error) throw new Error(error.message)
   }
-
-  const { error } = await supabase.from('reviews').delete().eq('id', reviewId)
-  if (error) throw new Error(error.message)
 
   await logAuditAction({
     actorId: actor?.id,

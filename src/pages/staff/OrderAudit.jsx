@@ -121,7 +121,7 @@ export default function OrderAudit() {
                 <th className="px-5 py-3">ID & Tanggal Booking</th>
                 <th className="px-5 py-3">Tamu</th>
                 <th className="px-5 py-3">Hotel & Kamar</th>
-                <th className="px-5 py-3">Total / Fee (15%) / Net</th>
+                <th className="px-5 py-3">Total / Fee / Net Mitra</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3">Kunci Payout</th>
                 <th className="px-5 py-3 text-right">Aksi CS</th>
@@ -151,16 +151,22 @@ export default function OrderAudit() {
                       Rp {Number(b.total_price || 0).toLocaleString('id-ID')}
                     </div>
                     <div className="text-slate-500">
-                      Fee: Rp{' '}
-                      {Number(b.platform_fee || Math.round(Number(b.total_price || 0) * 0.15)).toLocaleString(
-                        'id-ID',
-                      )}
+                      Fee ({Math.round(Number(b.commission_rate ?? 0.15) * 100)}%): Rp{' '}
+                      {Number(
+                        b.platform_fee ||
+                          Math.round(Number(b.total_price || 0) * Number(b.commission_rate ?? 0.15)),
+                      ).toLocaleString('id-ID')}
                     </div>
                     <div className="font-semibold text-emerald-700">
                       Net: Rp{' '}
-                      {Number(b.partner_net || Math.round(Number(b.total_price || 0) * 0.85)).toLocaleString(
-                        'id-ID',
-                      )}
+                      {Number(
+                        b.partner_net ||
+                          Math.max(
+                            0,
+                            Number(b.total_price || 0) -
+                              Math.round(Number(b.total_price || 0) * Number(b.commission_rate ?? 0.15)),
+                          ),
+                      ).toLocaleString('id-ID')}
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
@@ -311,22 +317,37 @@ export default function OrderAudit() {
                   </div>
                 )}
                 <div className="flex justify-between text-slate-500 pt-1 border-t border-slate-200">
-                  <span>Komisi Platform WismaKu (15%):</span>
+                  <span>
+                    Komisi Platform ({Math.round(Number(selectedBooking.commission_rate ?? 0.15) * 100)}%):
+                  </span>
                   <span className="font-semibold text-slate-700">
                     Rp{' '}
                     {Number(
                       selectedBooking.platform_fee ||
-                        Math.round(Number(selectedBooking.total_price || 0) * 0.15),
+                        Math.round(
+                          Number(selectedBooking.total_price || 0) *
+                            Number(selectedBooking.commission_rate ?? 0.15),
+                        ),
                     ).toLocaleString('id-ID')}
                   </span>
                 </div>
                 <div className="flex justify-between text-emerald-700 font-bold">
-                  <span>Hak Bersih Mitra (85%):</span>
+                  <span>
+                    Hak Bersih Mitra (
+                    {100 - Math.round(Number(selectedBooking.commission_rate ?? 0.15) * 100)}%):
+                  </span>
                   <span>
                     Rp{' '}
                     {Number(
                       selectedBooking.partner_net ||
-                        Math.round(Number(selectedBooking.total_price || 0) * 0.85),
+                        Math.max(
+                          0,
+                          Number(selectedBooking.total_price || 0) -
+                            Math.round(
+                              Number(selectedBooking.total_price || 0) *
+                                Number(selectedBooking.commission_rate ?? 0.15),
+                            ),
+                        ),
                     ).toLocaleString('id-ID')}
                   </span>
                 </div>
