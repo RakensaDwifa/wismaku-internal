@@ -4,6 +4,7 @@ import {
   getUnpaidCompletedBookings,
   createOnDemandPayout,
   markPayoutAsPaid,
+  markBatchPayoutAsPaid,
   ensureSeed,
 } from './payoutAdmin.js'
 
@@ -50,5 +51,25 @@ describe('Payout Admin Service', () => {
     const p1 = payouts.find((p) => p.id === 'p-1')
     expect(p1.status).toBe('paid')
     expect(p1.transfer_ref).toBe('TRF-BCA-TEST-123')
+  })
+
+  it('dapat memproses batch payout sekaligus untuk beberapa tiket pencairan', async () => {
+    // Buat satu draft payout baru
+    const pNew = await createOnDemandPayout({
+      partnerEmail: 'mitra@wismaku.com',
+    })
+
+    const res = await markBatchPayoutAsPaid([pNew.id], {
+      batchTransferRef: 'BATCH-BCA-CORP-99',
+    })
+
+    expect(res.success).toBe(true)
+    expect(res.count).toBe(1)
+    expect(res.batchTransferRef).toBe('BATCH-BCA-CORP-99')
+
+    const payouts = await getPayoutsList()
+    const target = payouts.find((p) => p.id === pNew.id)
+    expect(target.status).toBe('paid')
+    expect(target.transfer_ref).toBe('BATCH-BCA-CORP-99')
   })
 })

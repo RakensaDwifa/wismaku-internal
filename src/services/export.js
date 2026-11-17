@@ -88,6 +88,45 @@ export function generatePayoutsCSV(payouts) {
   return [formatCSVRow(headers), ...rows.map(formatCSVRow)].join('\r\n')
 }
 
+export function generateBatchBankTransferCSV(payouts, { bankName = 'BCA', batchRef = '' } = {}) {
+  const generatedBatch = batchRef || `BATCH-${Date.now().toString(36).toUpperCase()}`
+  const today = new Date().toISOString().slice(0, 10)
+
+  const headers = [
+    'No',
+    'Tanggal Transfer',
+    'Kode Batch Payroll',
+    'Bank Tujuan',
+    'Nomor Rekening Tujuan',
+    'Nama Penerima',
+    'Nominal Transfer (IDR)',
+    'Berita Acara / Keterangan',
+    'ID Payout Ref',
+  ]
+
+  const rows = (payouts || []).map((p, idx) => {
+    const bank = p.bank_name || p.bankName || bankName
+    const accNum = p.account_number || p.accountNumber || '8820192831'
+    const accHolder = p.account_holder || p.accountHolder || p.partner_email || 'Mitra WismaKu'
+    const amount = Number(p.amount || 0)
+    const note = `Bagi Hasil WismaKu ${p.period_start || ''} sd ${p.period_end || ''}`
+
+    return [
+      idx + 1,
+      today,
+      generatedBatch,
+      bank,
+      accNum,
+      accHolder,
+      amount,
+      note,
+      p.id,
+    ]
+  })
+
+  return [formatCSVRow(headers), ...rows.map(formatCSVRow)].join('\r\n')
+}
+
 export function downloadCSV(filename, content) {
   if (typeof window === 'undefined') return
   const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' })

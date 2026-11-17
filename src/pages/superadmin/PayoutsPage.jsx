@@ -5,8 +5,9 @@ import {
   getUnpaidCompletedBookings,
   createOnDemandPayout,
   markPayoutAsPaid,
+  markBatchPayoutAsPaid,
 } from '../../services/payoutAdmin.js'
-import { generatePayoutsCSV, downloadCSV } from '../../services/export.js'
+import { generatePayoutsCSV, generateBatchBankTransferCSV, downloadCSV } from '../../services/export.js'
 import { uploadPayoutReceipt } from '../../services/storageUpload.js'
 import Badge from '../../components/Badge.jsx'
 import Modal from '../../components/Modal.jsx'
@@ -28,6 +29,63 @@ export default function PayoutsPage() {
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  // State Batch Payout Payroll Bank
+  const [selectedIds, setSelectedIds] = useState([])
+  const [batchModalOpen, setBatchModalOpen] = useState(false)
+  const [batchTransferRef, setBatchTransferRef] = useState('')
+
+  const pendingPayouts = (payouts || []).filter((p) => p.status === 'pending')
+  const allPendingSelected =
+    pendingPayouts.length > 0 && pendingPayouts.every((p) => selectedIds.includes(p.id))
+
+  const toggleSelectAll = () => {
+    if (allPendingSelected) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(pendingPayouts.map((p) => p.id))
+    }
+  }
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    )
+  }
+
+  const selectedPayoutObjects = (payouts || []).filter((p) => selectedIds.includes(p.id))
+  const totalSelectedAmount = selectedPayoutObjects.reduce(
+    (sum, p) => sum + Number(p.amount || 0),
+    0,
+  )
+
+  const handleExportBatchCSV = () => {
+    if (selectedPayoutObjects.length === 0) return
+    const csv = generateBatchBankTransferCSV(selectedPayoutObjects, {
+      batchRef: batchTransferRef || `BATCH-${new Date().toISOString().slice(0, 10)}`,
+    })
+    downloadCSV(`wismaku-batch-payroll-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+  }
+
+  const handleProcessBatchPayout = async (e) => {
+    e.preventDefault()
+    if (selectedIds.length === 0) return
+    setBusy(true)
+    setError('')
+    try {
+      await markBatchPayoutAsPaid(selectedIds, {
+        batchTransferRef: batchTransferRef || `BATCH-TRF-${new Date().toISOString().slice(0, 10)}`,
+      })
+      setBatchModalOpen(false)
+      setSelectedIds([])
+      setBatchTransferRef('')
+      await refreshPayouts()
+    } catch (err) {
+      setError(err.message || 'Gagal memproses batch payout.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const handleReceiptUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -223,13 +281,60 @@ export default function PayoutsPage() {
           </button>
         </div>
 
+        {/* Bar Aksi Batch Payout Rekonsiliasi Bank */}
+        {selectedIds.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-teal-200 bg-teal-50 p-3.5 text-xs text-teal-900 shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-extrabold text-teal-950">
+                {selectedIds.length} Payout Dipilih
+              </span>
+              <span className="text-slate-400">•</span>
+              <span>
+                Total Nominal:{' '}
+                <strong className="text-teal-900">
+                  Rp {totalSelectedAmount.toLocaleString('id-ID')}
+                </strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportBatchCSV}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-300 bg-white px-3 py-1.5 font-bold text-teal-800 hover:bg-teal-100 transition shadow-xs"
+              >
+                📥 Unduh CSV Batch Payroll (BCA/Mandiri)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBatchTransferRef(`BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-01`)
+                  setBatchModalOpen(true)
+                }}
+                className="rounded-lg bg-teal-800 px-3.5 py-1.5 font-bold text-white hover:bg-teal-900 transition shadow-xs"
+              >
+                ⚡ Eksekusi Batch Lunas ({selectedIds.length})
+              </button>
+            </div>
+          </div>
+        )}
+
         {payouts.length === 0 ? (
           <EmptyState title="Belum ada riwayat payout" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] text-left text-sm">
+            <table className="w-full min-w-[750px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <th className="px-4 py-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allPendingSelected}
+                      onChange={toggleSelectAll}
+                      disabled={pendingPayouts.length === 0}
+                      className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                      title="Pilih semua payout pending"
+                    />
+                  </th>
                   <th className="px-4 py-3">ID Payout</th>
                   <th className="px-4 py-3">Email Mitra</th>
                   <th className="px-4 py-3">Jumlah Dicairkan</th>
@@ -241,7 +346,24 @@ export default function PayoutsPage() {
               </thead>
               <tbody>
                 {payouts.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                  <tr
+                    key={p.id}
+                    className={`border-b border-slate-100 last:border-0 ${
+                      selectedIds.includes(p.id) ? 'bg-teal-50/40' : 'hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <td className="px-4 py-3 text-center">
+                      {p.status === 'pending' ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(p.id)}
+                          onChange={() => toggleSelectOne(p.id)}
+                          className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                        />
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-mono text-xs font-bold text-slate-800">
                       {p.id.slice(0, 8)}...
                     </td>
@@ -444,6 +566,63 @@ export default function PayoutsPage() {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* Modal Eksekusi Batch Payout Rekonsiliasi Bank */}
+      <Modal
+        isOpen={batchModalOpen}
+        onClose={() => setBatchModalOpen(false)}
+        title={`Konfirmasi Batch Payout (${selectedIds.length} Tiket Mitra)`}
+      >
+        <form onSubmit={handleProcessBatchPayout} className="space-y-4 text-xs">
+          <div className="rounded-lg border border-teal-200 bg-teal-50/70 p-3.5 text-teal-900 space-y-1">
+            <div className="flex justify-between font-bold">
+              <span>Total Tiket Diproses:</span>
+              <span>{selectedIds.length} Mitra</span>
+            </div>
+            <div className="flex justify-between font-extrabold text-sm text-teal-850">
+              <span>Total Dana Ditransfer:</span>
+              <span>Rp {totalSelectedAmount.toLocaleString('id-ID')}</span>
+            </div>
+            <p className="text-[11px] text-teal-700 pt-1">
+              Seluruh tiket payout yang dipilih akan otomatis ditandai <strong>Lunas (Paid)</strong> dan nomor batch referensi transfer bank akan dicatat di riwayat mutasi dana mitra.
+            </p>
+          </div>
+
+          <FormField
+            label="Kode / Nomor Referensi Batch Transfer Bank"
+            hint="Masukkan nomor referensi transaksi batch KlikBCA Bisnis, Mandiri MCM, dll."
+          >
+            <input
+              type="text"
+              required
+              placeholder="Contoh: BATCH-BCA-20261117-001"
+              value={batchTransferRef}
+              onChange={(e) => setBatchTransferRef(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 p-2.5 font-mono text-xs font-semibold text-slate-800 focus:border-teal-700 focus:outline-none"
+            />
+          </FormField>
+
+          {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setBatchModalOpen(false)}
+              className="btn btn-sm btn-outline"
+              disabled={busy}
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="btn btn-sm btn-primary bg-teal-800 hover:bg-teal-900"
+              disabled={busy}
+            >
+              {busy ? 'Memproses Batch...' : 'Konfirmasi Batch Payout Lunas'}
+            </button>
+          </div>
+        </form>
       </Modal>
 
       <PayoutReceiptModal payout={selectedReceipt} onClose={() => setSelectedReceipt(null)} />

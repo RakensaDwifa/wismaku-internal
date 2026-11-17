@@ -21,6 +21,9 @@ export const seedRefunds = [
     account_holder: 'Ahmad Faisal',
     status: 'pending',
     hq_notes: null,
+    partner_response: 'Kamar telah disiapkan dan ditahan khusus untuk tamu ini sesuai kebijakan non-refundable.',
+    partner_evidence_url: 'https://images.unsplash.com/photo-1590490360182-c33d57733427',
+    partner_responded_at: new Date(Date.now() - 3600000 * 1).toISOString(),
     created_at: new Date(Date.now() - 3600000 * 3).toISOString(),
     reviewed_at: null,
   },
@@ -56,9 +59,12 @@ export async function getRefundRequests({ status, search } = {}) {
     accountNumber: r.account_number,
     accountHolder: r.account_holder,
     status: r.status,
-    hqNotes: r.hq_notes,
-    createdAt: r.created_at,
-    reviewedAt: r.reviewed_at,
+    hqNotes: r.hq_notes || r.hqNotes,
+    partnerResponse: r.partner_response || r.partnerResponse || null,
+    partnerEvidenceUrl: r.partner_evidence_url || r.partnerEvidenceUrl || null,
+    partnerRespondedAt: r.partner_responded_at || r.partnerRespondedAt || null,
+    createdAt: r.created_at || r.createdAt,
+    reviewedAt: r.reviewed_at || r.reviewedAt,
   }))
 
   if (status && status !== 'all') {

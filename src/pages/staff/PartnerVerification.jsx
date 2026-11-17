@@ -6,6 +6,7 @@ import Modal from '../../components/Modal.jsx'
 import FormField from '../../components/FormField.jsx'
 import EmptyState from '../../components/EmptyState.jsx'
 import PageLoader from '../../components/PageLoader.jsx'
+import SlaBadge from '../../components/SlaBadge.jsx'
 
 export default function PartnerVerification() {
   const { data: leads, refresh } = useData(() => getPartnerLeads(), [])
@@ -101,6 +102,7 @@ export default function PartnerVerification() {
                 <th className="px-5 py-3">Nama Pemilik</th>
                 <th className="px-5 py-3">Email Mitra</th>
                 <th className="px-5 py-3">Legalitas (KYC)</th>
+                <th className="px-5 py-3">SLA KYC (48j)</th>
                 <th className="px-5 py-3">Tanggal Daftar</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3 text-right">Tindakan</th>
@@ -132,6 +134,13 @@ export default function PartnerVerification() {
                     ) : (
                       <span className="text-[11px] font-medium text-slate-400 italic">Belum unggah</span>
                     )}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <SlaBadge
+                      createdAt={lead.submittedAt}
+                      slaHours={48}
+                      reviewedAt={lead.status !== 'pending' ? lead.reviewedAt || lead.submittedAt : null}
+                    />
                   </td>
                   <td className="px-5 py-3.5 text-xs text-slate-500">
                     {lead.submittedAt
