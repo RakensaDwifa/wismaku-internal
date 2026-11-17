@@ -11,6 +11,13 @@ import FormField from '../../components/FormField.jsx'
 import Modal from '../../components/Modal.jsx'
 import SlaBadge from '../../components/SlaBadge.jsx'
 
+function sanitizeEvidenceUrl(url) {
+  if (!url) return null
+  const trimmed = String(url).trim()
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return null
+}
+
 export default function OrderAudit() {
   const [activeTab, setActiveTab] = useState('orders') // 'orders' | 'refunds'
   const [statusFilter, setStatusFilter] = useState('all')
@@ -404,11 +411,11 @@ export default function OrderAudit() {
                               <span>⚖️ Sanggahan Mitra</span>
                             </div>
                             <p className="line-clamp-2 italic">"{r.partnerResponse}"</p>
-                            {r.partnerEvidenceUrl && (
+                            {sanitizeEvidenceUrl(r.partnerEvidenceUrl) && (
                               <a
-                                href={r.partnerEvidenceUrl}
+                                href={sanitizeEvidenceUrl(r.partnerEvidenceUrl)}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className="font-bold text-teal-700 underline block mt-0.5"
                               >
                                 🔗 Bukti Sanggah Mitra
@@ -704,11 +711,11 @@ export default function OrderAudit() {
                 <div className="rounded border border-amber-200 bg-amber-50/80 p-2 text-[11px] text-amber-900 mt-1">
                   <div className="font-bold">⚖️ Sanggahan Mitra:</div>
                   <p className="italic">"{approvingRefund.partnerResponse}"</p>
-                  {approvingRefund.partnerEvidenceUrl && (
+                  {sanitizeEvidenceUrl(approvingRefund.partnerEvidenceUrl) && (
                     <a
-                      href={approvingRefund.partnerEvidenceUrl}
+                      href={sanitizeEvidenceUrl(approvingRefund.partnerEvidenceUrl)}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="font-bold text-teal-800 underline block mt-0.5"
                     >
                       🔗 Lihat Bukti Mitra
@@ -768,11 +775,11 @@ export default function OrderAudit() {
                 <div className="rounded border border-amber-200 bg-amber-50/80 p-2 text-[11px] text-amber-900 mt-1">
                   <div className="font-bold">⚖️ Sanggahan Mitra:</div>
                   <p className="italic">"{rejectingRefund.partnerResponse}"</p>
-                  {rejectingRefund.partnerEvidenceUrl && (
+                  {sanitizeEvidenceUrl(rejectingRefund.partnerEvidenceUrl) && (
                     <a
-                      href={rejectingRefund.partnerEvidenceUrl}
+                      href={sanitizeEvidenceUrl(rejectingRefund.partnerEvidenceUrl)}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="font-bold text-teal-800 underline block mt-0.5"
                     >
                       🔗 Lihat Bukti Mitra
