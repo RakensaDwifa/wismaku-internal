@@ -9,6 +9,7 @@ import PageLoader from '../../components/PageLoader.jsx'
 import ConfirmDialog from '../../components/ConfirmDialog.jsx'
 import FormField from '../../components/FormField.jsx'
 import Modal from '../../components/Modal.jsx'
+import SlaBadge from '../../components/SlaBadge.jsx'
 
 export default function OrderAudit() {
   const [activeTab, setActiveTab] = useState('orders') // 'orders' | 'refunds'
@@ -365,7 +366,8 @@ export default function OrderAudit() {
                     <th className="px-5 py-3">Pemesan & Email</th>
                     <th className="px-5 py-3">Rekening Tujuan Refund</th>
                     <th className="px-5 py-3">Nominal Refund</th>
-                    <th className="px-5 py-3">Alasan Pengajuan</th>
+                    <th className="px-5 py-3">Alasan Tamu & Sanggahan Mitra</th>
+                    <th className="px-5 py-3">SLA (24j)</th>
                     <th className="px-5 py-3">Status</th>
                     <th className="px-5 py-3 text-right">Tindakan HQ</th>
                   </tr>
@@ -392,11 +394,35 @@ export default function OrderAudit() {
                       <td className="px-5 py-3.5 font-extrabold text-teal-800 text-xs">
                         Rp {r.amount.toLocaleString('id-ID')}
                       </td>
-                      <td
-                        className="px-5 py-3.5 text-xs text-slate-700 max-w-[200px] truncate"
-                        title={r.reason}
-                      >
-                        {r.reason}
+                      <td className="px-5 py-3.5 text-xs text-slate-700 max-w-[280px]">
+                        <div className="font-semibold text-slate-900" title={r.reason}>
+                          <span className="text-slate-400 font-normal">Tamu:</span> {r.reason}
+                        </div>
+                        {r.partnerResponse ? (
+                          <div className="mt-1.5 rounded border border-teal-200 bg-teal-50/60 p-1.5 text-[11px] text-teal-900 space-y-0.5">
+                            <div className="font-extrabold flex items-center gap-1 text-teal-800">
+                              <span>⚖️ Sanggahan Mitra</span>
+                            </div>
+                            <p className="line-clamp-2 italic">"{r.partnerResponse}"</p>
+                            {r.partnerEvidenceUrl && (
+                              <a
+                                href={r.partnerEvidenceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-bold text-teal-700 underline block mt-0.5"
+                              >
+                                🔗 Bukti Sanggah Mitra
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="inline-block mt-1 text-[10px] text-slate-400 italic">
+                            Belum ada sanggahan dari mitra
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <SlaBadge createdAt={r.createdAt} slaHours={24} reviewedAt={r.reviewedAt} />
                       </td>
                       <td className="px-5 py-3.5">
                         <span
@@ -659,7 +685,7 @@ export default function OrderAudit() {
           title={`Setujui Pengembalian Dana #${approvingRefund.id.slice(0, 8)}`}
         >
           <form onSubmit={handleApproveRefundSubmit} className="space-y-4 text-xs">
-            <div className="rounded-lg border border-teal-200 bg-teal-50/70 p-3 text-teal-900 space-y-1">
+            <div className="rounded-lg border border-teal-200 bg-teal-50/70 p-3 text-teal-900 space-y-1.5">
               <div className="flex justify-between font-bold">
                 <span>Nilai Pengembalian:</span>
                 <span>Rp {approvingRefund.amount.toLocaleString('id-ID')}</span>
@@ -671,6 +697,25 @@ export default function OrderAudit() {
               <div className="text-[11px] text-teal-700">
                 Booking ID: {approvingRefund.bookingId} ({approvingRefund.guestName})
               </div>
+              <div className="border-t border-teal-200/60 pt-1 text-[11px]">
+                <span className="font-semibold text-teal-900">Alasan Tamu:</span> "{approvingRefund.reason}"
+              </div>
+              {approvingRefund.partnerResponse && (
+                <div className="rounded border border-amber-200 bg-amber-50/80 p-2 text-[11px] text-amber-900 mt-1">
+                  <div className="font-bold">⚖️ Sanggahan Mitra:</div>
+                  <p className="italic">"{approvingRefund.partnerResponse}"</p>
+                  {approvingRefund.partnerEvidenceUrl && (
+                    <a
+                      href={approvingRefund.partnerEvidenceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-bold text-teal-800 underline block mt-0.5"
+                    >
+                      🔗 Lihat Bukti Mitra
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
 
             <FormField label="Catatan Transaksi / Referensi Transfer HQ">
@@ -713,12 +758,28 @@ export default function OrderAudit() {
           title={`Tolak Pengembalian Dana #${rejectingRefund.id.slice(0, 8)}`}
         >
           <form onSubmit={handleRejectRefundSubmit} className="space-y-4 text-xs">
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-900 space-y-1">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-900 space-y-1.5">
               <div className="font-bold">
                 Permohonan senilai Rp {rejectingRefund.amount.toLocaleString('id-ID')} (
                 {rejectingRefund.guestName})
               </div>
-              <div className="text-[11px] text-red-700">Alasan Tamu: {rejectingRefund.reason}</div>
+              <div className="text-[11px] text-red-700">Alasan Tamu: "{rejectingRefund.reason}"</div>
+              {rejectingRefund.partnerResponse && (
+                <div className="rounded border border-amber-200 bg-amber-50/80 p-2 text-[11px] text-amber-900 mt-1">
+                  <div className="font-bold">⚖️ Sanggahan Mitra:</div>
+                  <p className="italic">"{rejectingRefund.partnerResponse}"</p>
+                  {rejectingRefund.partnerEvidenceUrl && (
+                    <a
+                      href={rejectingRefund.partnerEvidenceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-bold text-teal-800 underline block mt-0.5"
+                    >
+                      🔗 Lihat Bukti Mitra
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
 
             <FormField label="Alasan Penolakan HQ (Ditampilkan ke Tamu)">

@@ -268,3 +268,64 @@ export async function markPayoutAsPaid(payoutId, { transferRef }) {
   notify(DATA_EVENT)
   return { success: true }
 }
+
+export async function markBatchPayoutAsPaid(payoutIds, { batchTransferRef }) {
+  if (!payoutIds || payoutIds.length === 0) {
+    throw new Error('Pilih setidaknya satu tiket pencairan untuk diproses batch.')
+  }
+
+  const cleanRef = (batchTransferRef || '').trim() || `BATCH-TRF-${Date.now().toString(36).toUpperCase()}`
+  const actor = getActiveUser()
+  const paidAt = new Date().toISOString()
+
+  if (USE_MOCK || !supabase) {
+    ensureSeed()
+    const idSet = new Set(payoutIds)
+    const list = readList(PAYOUTS_KEY).map((p) =>
+      idSet.has(p.id)
+        ? {
+            ...p,
+            status: 'paid',
+            transfer_ref: cleanRef,
+            paid_at: paidAt,
+          }
+        : p,
+    )
+    writeList(PAYOUTS_KEY, list)
+
+    await logAuditAction({
+      actorId: actor?.id,
+      actorRole: actor?.role,
+      action: 'batch_payout_marked_paid',
+      targetTable: 'partner_payouts',
+      targetId: cleanRef,
+      details: { payoutIds, count: payoutIds.length, batchTransferRef: cleanRef },
+    })
+
+    notify(DATA_EVENT)
+    return { success: true, count: payoutIds.length, batchTransferRef: cleanRef }
+  }
+
+  const { error } = await supabase
+    .from('partner_payouts')
+    .update({
+      status: 'paid',
+      transfer_ref: cleanRef,
+      paid_at: paidAt,
+    })
+    .in('id', payoutIds)
+
+  if (error) throw new Error(error.message)
+
+  await logAuditAction({
+    actorId: actor?.id,
+    actorRole: actor?.role,
+    action: 'batch_payout_marked_paid',
+    targetTable: 'partner_payouts',
+    targetId: cleanRef,
+    details: { payoutIds, count: payoutIds.length, batchTransferRef: cleanRef },
+  })
+
+  notify(DATA_EVENT)
+  return { success: true, count: payoutIds.length, batchTransferRef: cleanRef }
+}

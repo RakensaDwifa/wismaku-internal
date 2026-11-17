@@ -51,4 +51,27 @@ describe('refundDesk service (wismaku-internal)', () => {
     expect(list[0].status).toBe('rejected')
     expect(list[0].hqNotes).toContain('H-0')
   })
+
+  it('memuat sanggahan dan bukti yang diunggah mitra', async () => {
+    writeList(REFUNDS_KEY, [
+      {
+        id: 'ref-test-2',
+        booking_id: 'BK-1000',
+        hotel_id: '1',
+        guest_name: 'Dewi Lestari',
+        email: 'dewi@example.com',
+        amount: 450000,
+        reason: 'Kamar tidak sesuai foto',
+        partner_response: 'Kamar sesuai standar tipe Deluxe dan sudah di-upgrade gratis.',
+        partner_evidence_url: 'https://images.example.com/deluxe.jpg',
+        partner_responded_at: new Date().toISOString(),
+        status: 'pending',
+      },
+    ])
+
+    const list = await getRefundRequests()
+    expect(list[0].partnerResponse).toContain('Kamar sesuai standar')
+    expect(list[0].partnerEvidenceUrl).toBe('https://images.example.com/deluxe.jpg')
+    expect(list[0].partnerRespondedAt).toBeDefined()
+  })
 })
