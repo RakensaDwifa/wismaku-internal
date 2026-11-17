@@ -2,10 +2,12 @@ export function formatCSVRow(cells) {
   return cells
     .map((c) => {
       const str = c === null || c === undefined ? '' : String(c)
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`
+      // Tangkal CSV Injection: awalan =, +, -, @, \t, \r dipasangi kutip tunggal aman
+      const safe = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str
+      if (safe.includes(',') || safe.includes('"') || safe.includes('\n')) {
+        return `"${safe.replace(/"/g, '""')}"`
       }
-      return str
+      return safe
     })
     .join(',')
 }
